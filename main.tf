@@ -29,14 +29,14 @@ locals {
 }
 
 # Create or reuse existing AWS EC2 key pair
-resource "aws_key_pair" "flask_key" {
-  key_name   = "flask-key"
-  public_key = local.ssh_public_key
+#resource "aws_key_pair" "flask_key" {
+#  key_name   = "flask-key"
+#  public_key = local.ssh_public_key
 
-  lifecycle {
-    ignore_changes = [public_key]  # ✅ Prevents duplicate import errors
-  }
-}
+#  lifecycle {
+#    ignore_changes = [public_key]  # ✅ Prevents duplicate import errors
+#  }
+#}
 
 
 
