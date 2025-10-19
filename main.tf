@@ -7,26 +7,33 @@ terraform {
   }
 }
 
-variable "ssh_public_key" {
-  description = "Public SSH key for EC2 access"
-  type        = string
-}
-
 provider "aws" {
   region = "ap-south-1" # Mumbai region
 }
 
-# -------------------------------
-# 1️⃣  Create SSH key pair automatically
-# -------------------------------
-resource "aws_key_pair" "flask_key" {
-  key_name   = "flask-key"
-  public_key = var.ssh_public_key # Adjust path if needed local
+# ---------------------------------
+# 🧩 Variables
+# ---------------------------------
+variable "ssh_public_key_b64" {
+  description = "Base64-encoded public SSH key for EC2"
+  type        = string
 }
 
-# -------------------------------
-# 2️⃣  Security Group (SSH + HTTP)
-# -------------------------------
+locals {
+  ssh_public_key = base64decode(var.ssh_public_key_b64)
+}
+
+# ---------------------------------
+# 🔑 Key Pair (from GitHub Secret or local)
+# ---------------------------------
+resource "aws_key_pair" "flask_key" {
+  key_name   = "flask-key"
+  public_key = local.ssh_public_key
+}
+
+# ---------------------------------
+# 🔐 Security Group
+# ---------------------------------
 resource "aws_security_group" "flask_sg" {
   name        = "flask_sg"
   description = "Allow SSH and Flask (via Nginx on port 80)"
@@ -36,7 +43,7 @@ resource "aws_security_group" "flask_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # 🔒 Optional: replace with your IP /32 for security
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
@@ -59,35 +66,34 @@ resource "aws_security_group" "flask_sg" {
   }
 }
 
-# -------------------------------
-# 3️⃣  Get latest Ubuntu AMI
-# -------------------------------
+# ---------------------------------
+# 🐧 Get latest Ubuntu AMI
+# ---------------------------------
 data "aws_ami" "ubuntu" {
   most_recent = true
-  owners      = ["099720109477"] # Canonical (Ubuntu official)
+  owners      = ["099720109477"]
 
   filter {
     name   = "name"
     values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
-}
 
-# -------------------------------
-# 4️⃣  CloudWatch Log Group
-# -------------------------------
-resource "aws_cloudwatch_log_group" "flask_logs" {
-  name              = "/ec2/flask-app"
-  retention_in_days = 7
-
-  tags = {
-    Environment = "prod"
-    Application = "flask-app"
+  timeouts {
+    read = "30s"
   }
 }
 
-# -------------------------------
-# 5️⃣  EC2 Instance Setup
-# -------------------------------
+# ---------------------------------
+# 🪵 CloudWatch Logs (optional)
+# ---------------------------------
+resource "aws_cloudwatch_log_group" "flask_logs" {
+  name              = "/ec2/flask-app"
+  retention_in_days = 7
+}
+
+# ---------------------------------
+# ☁️ EC2 Instance
+# ---------------------------------
 resource "aws_instance" "flask_ec2" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t2.micro"
@@ -99,32 +105,16 @@ resource "aws_instance" "flask_ec2" {
 #!/bin/bash
 set -euxo pipefail
 exec > /var/log/user-data.log 2>&1
-export DEBIAN_FRONTEND=noninteractive
 
-echo "🚀 Starting full Flask + Nginx setup"
+echo "🚀 Starting Flask + Nginx setup"
 
-# --- Wait for apt locks ---
-while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-    echo "🔒 Waiting for apt lock..."
-    sleep 5
-done
-
-# --- Update and install packages ---
 apt-get update -y
 apt-get install -y python3-pip git nginx
 
-# --- Ensure nginx directories exist ---
-mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
-
-systemctl enable nginx
-systemctl start nginx
-
-# --- Flask setup ---
 cd /home/ubuntu
 git clone https://github.com/venkat-ka/flask-app.git
 cd flask-app
 
-# Fix Flask run host/port safely
 if ! grep -q 'host="0.0.0.0"' main.py; then
   sed -i 's/app.run(/app.run(host="0.0.0.0",/' main.py || true
 fi
@@ -133,7 +123,6 @@ sed -i 's/port = 80/port = 5000/' main.py || true
 
 pip3 install -r requirements_clean.txt
 
-# --- systemd service for Flask ---
 cat <<EOT > /etc/systemd/system/flask-app.service
 [Unit]
 Description=Flask ML Prediction API
@@ -153,23 +142,10 @@ systemctl daemon-reload
 systemctl enable flask-app
 systemctl start flask-app
 
-# --- Wait until Flask port is up ---
-for i in {1..20}; do
-    if ss -tuln | grep -q ":5000"; then
-        echo "✅ Flask is listening on port 5000"
-        break
-    else
-        echo "⏳ Waiting for Flask to start..."
-        sleep 10
-    fi
-done
-
-# --- Nginx reverse proxy ---
 cat <<EOT > /etc/nginx/sites-available/flask-proxy
 server {
     listen 80;
     server_name _;
-
     location / {
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host \$host;
@@ -184,11 +160,8 @@ ln -sf /etc/nginx/sites-available/flask-proxy /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 nginx -t && systemctl restart nginx
-systemctl enable nginx
 
-
-
-echo "✅ Flask + Nginx setup completed successfully!" > /var/log/flask-nginx-setup.log
+echo "✅ Flask + Nginx setup complete!" > /var/log/flask-setup.log
 EOF
 
   tags = {
@@ -196,57 +169,28 @@ EOF
   }
 }
 
-# -------------------------------
-# 6️⃣  Elastic IP
-# -------------------------------
+# ---------------------------------
+# 🌐 Elastic IP
+# ---------------------------------
 resource "aws_eip" "flask_ip" {
   instance = aws_instance.flask_ec2.id
   domain   = "vpc"
-
-  tags = {
-    Name = "flask-app-eip"
-  }
 }
 
-# -------------------------------
-# 7️⃣  Flask Health Check (Improved)
-# -------------------------------
-resource "null_resource" "health_check" {
-  depends_on = [aws_eip.flask_ip]
-
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "🕐 Waiting 90 seconds before starting health check..."
-      sleep 90
-      echo "🔍 Checking Flask /health endpoint..."
-      for i in {1..60}; do
-        if curl -s -f http://${aws_eip.flask_ip.public_ip}/health >/dev/null; then
-          echo "✅ Flask API is healthy after $i attempts!"
-          exit 0
-        fi
-        echo "⏳ Attempt $i: Flask not ready yet, retrying in 10s..."
-        sleep 10
-      done
-      echo "❌ Flask health check failed after 10 minutes!"
-      exit 1
-    EOT
-  }
-}
-
-# -------------------------------
-# 8️⃣  Outputs
-# -------------------------------
+# ---------------------------------
+# 🧠 Outputs
+# ---------------------------------
 output "elastic_ip" {
   value       = aws_eip.flask_ip.public_ip
-  description = "Permanent Elastic IP assigned to Flask instance"
+  description = "Elastic IP assigned to Flask instance"
 }
 
 output "ssh_command" {
   value       = "ssh -i ~/.ssh/id_rsa ubuntu@${aws_eip.flask_ip.public_ip}"
-  description = "SSH into your EC2 instance"
+  description = "SSH into EC2 instance"
 }
 
 output "flask_url" {
   value       = "http://${aws_eip.flask_ip.public_ip}"
-  description = "Access your Flask app via Nginx reverse proxy"
+  description = "Flask app URL"
 }
