@@ -130,7 +130,7 @@ resource "aws_instance" "flask_ec2" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t2.micro"
   #key_name               = aws_key_pair.flask_key.key_name
-  vpc_security_group_ids = [aws_security_group.flask_sg.id]
+  #vpc_security_group_ids = [aws_security_group.flask_sg.id]
   depends_on             = [aws_cloudwatch_log_group.flask_logs]
 
   user_data = <<-EOF
