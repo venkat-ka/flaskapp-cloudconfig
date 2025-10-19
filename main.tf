@@ -11,11 +11,8 @@ provider "aws" {
   region = "ap-south-1" # Mumbai region
 }
 
-# ---------------------------------
-# 🧩 Variables
-# ---------------------------------
 variable "ssh_public_key_b64" {
-  description = "Base64-encoded public SSH key for EC2"
+  description = "Base64-encoded SSH public key"
   type        = string
 }
 
@@ -23,13 +20,11 @@ locals {
   ssh_public_key = base64decode(var.ssh_public_key_b64)
 }
 
-# ---------------------------------
-# 🔑 Key Pair (from GitHub Secret or local)
-# ---------------------------------
 resource "aws_key_pair" "flask_key" {
   key_name   = "flask-key"
   public_key = local.ssh_public_key
 }
+
 
 # ---------------------------------
 # 🔐 Security Group
