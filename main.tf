@@ -16,17 +16,13 @@ variable "ssh_public_key_b64" {
   type        = string
 }
 
-locals {
-  ssh_public_key = base64decode(var.ssh_public_key_b64)
+resource "random_id" "key_suffix" {
+  byte_length = 2
 }
 
 resource "aws_key_pair" "flask_key" {
-  key_name   = "flask-key"
+  key_name   = "flask-key-${random_id.key_suffix.hex}"
   public_key = local.ssh_public_key
-
-  lifecycle {
-    ignore_changes = [public_key]
-  }
 }
 
 
