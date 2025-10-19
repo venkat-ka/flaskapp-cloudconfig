@@ -33,8 +33,9 @@ jobs:
       - name: Terraform Plan
         run: terraform plan -out=tfplan
 
-      - name: Terraform Apply 🚀
+      - name: Terraform Apply (with debug)
         env:
+          TF_LOG: DEBUG
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
         run: terraform apply -auto-approve tfplan
 
