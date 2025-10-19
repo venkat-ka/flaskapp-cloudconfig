@@ -1,4 +1,4 @@
-name: 🚀 Terraform Deploy to AWS
+name: Terraform Deploy to AWS EC2
 
 on:
   push:
@@ -9,38 +9,39 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  terraform:
     runs-on: ubuntu-latest
-    env:
-      AWS_REGION: ap-south-1
-      TF_INPUT: false
-      TF_LOG: WARN
-      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
 
     steps:
-      - name: 📥 Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 🔐 Configure AWS credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: 🧰 Setup Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
 
-      - name: 🏗️ Terraform Init
-        run: terraform init -input=false
+      - name: Terraform Init
+        run: terraform init
 
-      - name: ✅ Terraform Validate
-        run: terraform validate
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
 
-      - name: 📋 Terraform Plan
-        run: terraform plan -input=false -no-color -out=tfplan
+      - name: Terraform Apply 🚀
+        env:
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: terraform apply -auto-approve tfplan
 
-      - name: 🚀 Terraform Apply
-        if: github.ref == 'refs/heads/main'
-        run: terraform apply -auto-approve -input=false tfplan
+      - name: Health Check ✅
+        run: |
+          echo "Waiting for Flask to start..."
+          sleep 90
+          ELASTIC_IP=$(terraform output -raw elastic_ip)
+          echo "Checking http://$ELASTIC_IP/health ..."
+          curl -f http://$ELASTIC_IP/health || exit 1
