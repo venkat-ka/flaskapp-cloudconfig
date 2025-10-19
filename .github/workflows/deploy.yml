@@ -30,10 +30,10 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Plan
+      - name: Terraform Plan (with debug)
         run: terraform plan -out=tfplan
 
-      - name: Terraform Apply (with debug)
+      - name: Terraform Apply
         env:
           TF_LOG: DEBUG
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
