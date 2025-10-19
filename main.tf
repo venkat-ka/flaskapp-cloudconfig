@@ -16,7 +16,7 @@ provider "aws" {
 # -------------------------------
 resource "aws_key_pair" "flask_key" {
   key_name   = "flask-key"
-  public_key = file("/home/venkatesh/.ssh/id_rsa.pub") # Adjust path if needed
+  public_key = file(pathexpand("~/.ssh/id_rsa.pub")) # Adjust path if needed
 }
 
 # -------------------------------
