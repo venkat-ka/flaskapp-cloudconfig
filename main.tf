@@ -84,6 +84,11 @@ data "aws_ami" "ubuntu" {
 resource "aws_cloudwatch_log_group" "flask_logs" {
   name              = "/ec2/flask-app"
   retention_in_days = 7
+
+  lifecycle {
+    prevent_destroy = false
+    create_before_destroy = true
+  }
 }
 
 # ---------------------------------
