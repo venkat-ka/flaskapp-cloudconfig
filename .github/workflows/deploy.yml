@@ -1,4 +1,4 @@
-name: Terraform Deploy to AWS
+name: 🚀 Terraform Deploy to AWS
 
 on:
   push:
@@ -11,29 +11,36 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ap-south-1
+      TF_INPUT: false
+      TF_LOG: WARN
+      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: 🔐 Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
+      - name: 🧰 Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
 
-      - name: Terraform Init
-        run: terraform init
+      - name: 🏗️ Terraform Init
+        run: terraform init -input=false
 
-      - name: Terraform Plan
-        run: terraform plan
+      - name: ✅ Terraform Validate
+        run: terraform validate
+
+      - name: 📋 Terraform Plan
+        run: terraform plan -input=false -no-color -out=tfplan
 
       - name: 🚀 Terraform Apply
-        env:
-          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-        run: terraform apply -auto-approve
-
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve -input=false tfplan
