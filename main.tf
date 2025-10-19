@@ -18,19 +18,31 @@ provider "aws" {
   region = "ap-south-1" # Mumbai region
 }
 
+# ---------------------------------
+# 🔑 SSH Key for EC2 Access
+# ---------------------------------
+
+# GitHub Actions passes this as a Base64-encoded secret
 variable "ssh_public_key_b64" {
   description = "Base64-encoded SSH public key"
   type        = string
 }
 
+# Decode base64 to plaintext key
+locals {
+  ssh_public_key = base64decode(var.ssh_public_key_b64)
+}
+
+# Create or reuse existing AWS EC2 key pair
 resource "aws_key_pair" "flask_key" {
   key_name   = "flask-key"
   public_key = local.ssh_public_key
 
   lifecycle {
-    ignore_changes = [public_key]
+    ignore_changes = [public_key]  # ✅ Prevents duplicate import errors
   }
 }
+
 
 
 
