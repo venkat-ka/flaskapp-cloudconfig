@@ -23,7 +23,12 @@ locals {
 resource "aws_key_pair" "flask_key" {
   key_name   = "flask-key"
   public_key = local.ssh_public_key
+
+  lifecycle {
+    ignore_changes = [public_key]
+  }
 }
+
 
 
 # ---------------------------------
