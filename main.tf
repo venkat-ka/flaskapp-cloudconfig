@@ -79,16 +79,33 @@ data "aws_ami" "ubuntu" {
 }
 
 # ---------------------------------
-# 🪵 CloudWatch Logs (optional)
+# 🪵 CloudWatch Logs (Safe for CI/CD)
 # ---------------------------------
+resource "random_id" "suffix" {
+  byte_length = 2
+}
+
 resource "aws_cloudwatch_log_group" "flask_logs" {
-  name              = "/ec2/flask-app"
+  # Use a unique log group name every deployment
+  name              = "/ec2/flask-app-${random_id.suffix.hex}"
   retention_in_days = 7
 
+  tags = {
+    Environment = "prod"
+    Application = "flask-app"
+  }
+
   lifecycle {
-    ignore_changes = [name]
+    prevent_destroy       = false
+    create_before_destroy = true
   }
 }
+
+output "cloudwatch_log_group" {
+  value       = aws_cloudwatch_log_group.flask_logs.name
+  description = "CloudWatch log group name used for this deployment"
+}
+
 
 
 # ---------------------------------
