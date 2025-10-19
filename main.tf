@@ -7,6 +7,11 @@ terraform {
   }
 }
 
+variable "ssh_public_key" {
+  description = "Public SSH key for EC2 access"
+  type        = string
+}
+
 provider "aws" {
   region = "ap-south-1" # Mumbai region
 }
@@ -16,7 +21,7 @@ provider "aws" {
 # -------------------------------
 resource "aws_key_pair" "flask_key" {
   key_name   = "flask-key"
-  public_key = file(pathexpand("~/.ssh/id_rsa.pub")) # Adjust path if needed
+  public_key = var.ssh_public_key # Adjust path if needed local
 }
 
 # -------------------------------
