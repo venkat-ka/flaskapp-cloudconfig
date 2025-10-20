@@ -1,9 +1,8 @@
 name: Terraform Destroy AWS Resources
 
 on:
-  workflow_dispatch:   # runs only when you trigger manually in GitHub UI
-  # OR uncomment next line to auto-destroy when a branch is deleted:
-  # delete:
+  workflow_dispatch:   # Run manually from GitHub Actions tab
+  # delete:             # Uncomment to auto-destroy on branch delete
 
 permissions:
   id-token: write
@@ -14,24 +13,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout your Terraform code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2️⃣ Configure AWS OIDC credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # 3️⃣ Setup Terraform CLI
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
 
+      # 4️⃣ Initialize Terraform backend (S3 state)
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -reconfigure
 
+      # 5️⃣ Destroy all Terraform-managed resources
       - name: Terraform Destroy
         env:
           TF_VAR_ssh_public_key_b64: ${{ secrets.SSH_PUBLIC_KEY_B64 }}
         run: terraform destroy -auto-approve -input=false
+
+      # 6️⃣ Verify Cleanup — Ensure EC2 and EIP are gone
+      - name: Verify AWS Cleanup ✅
+        run: |
+          echo "🔍 Checking for leftover EC2 instances or Elastic IPs..."
+          aws ec2 describe-instances --filters "Name=tag:Name,Values=flask-instance" --region ${{ secrets.AWS_REGION }} --query "Reservations[].Instances[].InstanceId" --output text > instances.txt || true
+          aws ec2 describe-addresses --region ${{ secrets.AWS_REGION }} --query "Addresses[].PublicIp" --output text > eips.txt || true
+
+          echo "🧾 Remaining EC2 Instances:"
+          cat instances.txt
+          echo "🧾 Remaining Elastic IPs:"
+          cat eips.txt
+
+          if [ -s instances.txt ] || [ -s eips.txt ]; then
+            echo "❌ Warning: Some resources still exist in AWS!"
+            echo "👉 Check AWS Console to ensure cleanup."
+            exit 1
+          else
+            echo "✅ Verified: All Terraform resources are fully destroyed."
+          fi
