@@ -29,14 +29,10 @@ locals {
 }
 
 # Create or reuse existing AWS EC2 key pair
-#resource "aws_key_pair" "flask_key" {
-#  key_name   = "flask-key"
-#  public_key = local.ssh_public_key
+data "aws_key_pair" "flask_key" {
+  key_name = "flask-key"
+}
 
-#  lifecycle {
-#    ignore_changes = [public_key]  # ✅ Prevents duplicate import errors
-#  }
-#}
 
 
 
@@ -129,8 +125,8 @@ output "cloudwatch_log_group" {
 resource "aws_instance" "flask_ec2" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t2.micro"
-  #key_name               = aws_key_pair.flask_key.key_name
-  #vpc_security_group_ids = [aws_security_group.flask_sg.id]
+  key_name               = aws_key_pair.flask_key.key_name
+  vpc_security_group_ids = [aws_security_group.flask_sg.id]
   depends_on             = [aws_cloudwatch_log_group.flask_logs]
 
   user_data = <<-EOF
