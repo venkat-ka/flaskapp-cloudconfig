@@ -1,4 +1,13 @@
 terraform {
+
+ backend "s3" {
+    bucket         = "venkat-terraform-state-25"
+    key            = "flask-app/terraform.tfstate"
+    region         = "ap-south-1"
+    encrypt        = true
+  }
+
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
