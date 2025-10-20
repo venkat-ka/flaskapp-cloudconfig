@@ -33,6 +33,10 @@ data "aws_key_pair" "flask_key" {
   key_name = "flask-key"
 }
 
+# Get the default VPC in the region
+data "aws_vpc" "default" {
+  default = true
+}
 
 
 
@@ -43,7 +47,8 @@ data "aws_key_pair" "flask_key" {
 resource "aws_security_group" "flask_sg" {
   name        = "flask_sg"
   description = "Allow SSH and Flask (via Nginx on port 80)"
-  
+  vpc_id      = data.aws_vpc.default.id   # ✅ FIXED
+
   ingress {
     description = "SSH Access"
     from_port   = 22
