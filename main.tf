@@ -5,8 +5,6 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  
 }
 
 provider "aws" {
@@ -16,8 +14,7 @@ provider "aws" {
 # ---------------------------------
 # 🔑 SSH Key for EC2 Access
 # ---------------------------------
-
-# GitHub Actions passes this as a Base64-encoded secret
+# GitHub Actions passes this as Base64-encoded secret
 variable "ssh_public_key_b64" {
   description = "Base64-encoded SSH public key"
   type        = string
@@ -28,29 +25,64 @@ locals {
   ssh_public_key = base64decode(var.ssh_public_key_b64)
 }
 
-# Create or reuse existing AWS EC2 key pair
+# Use existing key pair (already created manually)
 data "aws_key_pair" "flask_key" {
   key_name = "flask-key"
 }
 
-# Get the default VPC in the region
-data "aws_vpc" "default" {
-  default = true
+# ---------------------------------
+# 🌐 Custom VPC (so we never rely on default)
+# ---------------------------------
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "custom-vpc"
+  }
 }
 
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+}
 
+resource "aws_subnet" "public" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "ap-south-1a"
+  map_public_ip_on_launch = true
 
+  tags = {
+    Name = "public-subnet"
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+}
+
+resource "aws_route" "internet_access" {
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.igw.id
+}
+
+resource "aws_route_table_association" "public_assoc" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
 
 # ---------------------------------
 # 🔐 Security Group
 # ---------------------------------
 resource "aws_security_group" "flask_sg" {
   name        = "flask_sg"
-  description = "Allow SSH and Flask (via Nginx on port 80)"
-  vpc_id      = data.aws_vpc.default.id   # ✅ FIXED
+  description = "Allow SSH and HTTP"
+  vpc_id      = aws_vpc.main.id   # ✅ use custom VPC
 
   ingress {
-    description = "SSH Access"
+    description = "Allow SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -58,7 +90,7 @@ resource "aws_security_group" "flask_sg" {
   }
 
   ingress {
-    description = "HTTP for Flask app via Nginx"
+    description = "Allow HTTP"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -78,36 +110,17 @@ resource "aws_security_group" "flask_sg" {
 }
 
 # ---------------------------------
-# 🐧 Get latest Ubuntu AMI
-# ---------------------------------
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"]
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-
-  timeouts {
-    read = "30s"
-  }
-}
-
-# ---------------------------------
-# 🪵 CloudWatch Logs (Safe for CI/CD)
+# 🪵 CloudWatch Log Group
 # ---------------------------------
 resource "random_id" "suffix" {
   byte_length = 2
 }
 
 resource "aws_cloudwatch_log_group" "flask_logs" {
-  # Use a unique log group name every deployment
   name              = "/ec2/flask-app-${random_id.suffix.hex}"
   retention_in_days = 7
 
   tags = {
-    Environment = "prod"
     Application = "flask-app"
   }
 
@@ -117,22 +130,30 @@ resource "aws_cloudwatch_log_group" "flask_logs" {
   }
 }
 
-output "cloudwatch_log_group" {
-  value       = aws_cloudwatch_log_group.flask_logs.name
-  description = "CloudWatch log group name used for this deployment"
+# ---------------------------------
+# 🐧 Get latest Ubuntu AMI
+# ---------------------------------
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
 }
-
-
 
 # ---------------------------------
 # ☁️ EC2 Instance
 # ---------------------------------
 resource "aws_instance" "flask_ec2" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro"
-  key_name               = data.aws_key_pair.flask_key.key_name
-  vpc_security_group_ids = [aws_security_group.flask_sg.id]
-  depends_on             = [aws_cloudwatch_log_group.flask_logs]
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t2.micro"
+  key_name                    = data.aws_key_pair.flask_key.key_name
+  subnet_id                   = aws_subnet.public.id
+  vpc_security_group_ids      = [aws_security_group.flask_sg.id]
+  associate_public_ip_address = true
+  depends_on                  = [aws_cloudwatch_log_group.flask_logs]
 
   user_data = <<-EOF
 #!/bin/bash
